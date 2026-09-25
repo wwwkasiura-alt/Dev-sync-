@@ -1,5 +1,6 @@
 import { spawn, execSync } from 'child_process';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import os from 'os';
 
@@ -45,6 +46,18 @@ export interface CapabilityProbeResult {
   description: string;
 }
 
+// Locate Kotlin compiler binary if available
+function getKotlincBinaryPath(): string | null {
+  if (fsSync.existsSync('/tmp/kotlin/kotlinc/bin/kotlinc')) {
+    return '/tmp/kotlin/kotlinc/bin/kotlinc';
+  }
+  try {
+    const sysOut = execSync('which kotlinc 2>/dev/null', { encoding: 'utf8', timeout: 2000 }).trim();
+    if (sysOut) return sysOut;
+  } catch {}
+  return null;
+}
+
 // Normalize language name
 export function normalizeLanguage(lang: string, filePath?: string): string {
   if (filePath) {
@@ -76,13 +89,20 @@ export function normalizeLanguage(lang: string, filePath?: string): string {
   if (['rust', 'rs'].includes(clean)) return 'rust';
   if (['go', 'golang'].includes(clean)) return 'go';
   if (['html', 'htm', 'web', 'css'].includes(clean)) return 'html';
-  if (['kotlin', 'kt'].includes(clean)) return 'kotlin';
+  if (['kotlin', 'kt', 'kts'].includes(clean)) return 'kotlin';
   return clean || 'text';
 }
 
 // Check command availability
 function isCommandAvailable(cmd: string): { available: boolean; version?: string } {
   try {
+    if (cmd === 'kotlinc') {
+      const kPath = getKotlincBinaryPath();
+      if (!kPath) return { available: false };
+      const versionStr = execSync(`"${kPath}" -version 2>&1`, { encoding: 'utf8', timeout: 3000 }).trim();
+      return { available: true, version: versionStr };
+    }
+
     const out = execSync(`which ${cmd} 2>/dev/null`, { encoding: 'utf8', timeout: 2000 }).trim();
     if (!out) return { available: false };
     
@@ -94,7 +114,7 @@ function isCommandAvailable(cmd: string): { available: boolean; version?: string
         versionStr = execSync(`node --version 2>&1`, { encoding: 'utf8', timeout: 2000 }).trim();
       } else if (cmd === 'bash') {
         versionStr = execSync(`bash --version | head -n 1`, { encoding: 'utf8', timeout: 2000 }).trim();
-      } else if (cmd === 'gcc' || cmd === 'g++' || cmd === 'javac' || cmd === 'go' || cmd === 'rustc') {
+      } else if (cmd === 'gcc' || cmd === 'g++' || cmd === 'javac' || cmd === 'java' || cmd === 'go' || cmd === 'rustc') {
         versionStr = execSync(`${cmd} --version 2>&1 | head -n 1`, { encoding: 'utf8', timeout: 2000 }).trim();
       }
     } catch {
@@ -160,27 +180,22 @@ export async function executeCode(options: ExecuteOptions): Promise<ExecutionRes
       command = '/usr/bin/bash';
       args = [scriptPath];
     } else if (lang === 'sql') {
-      // Execute SQL via Python SQLite3 engine with tabular formatting
       const pythonSqlRunner = `
 import sqlite3
 import sys
 
-sql_script = """${code.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"') }"""
+sql_script = """${code.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"')}"""
 
 try:
     conn = sqlite3.connect(":memory:")
     cursor = conn.cursor()
-    
     statements = [s.strip() for s in sql_script.split(';') if s.strip()]
-    
     for stmt in statements:
         print(f"--> EXECUTING: {stmt[:60]}...")
         cursor.execute(stmt)
         if cursor.description:
             cols = [col[0] for col in cursor.description]
             rows = cursor.fetchall()
-            
-            # Print table
             col_widths = [max(len(str(col)), max([len(str(r[i])) for r in rows], default=0)) for i, col in enumerate(cols)]
             header = " | ".join(f"{cols[i]:<{col_widths[i]}}" for i in range(len(cols)))
             divider = "-+-".join("-" * w for w in col_widths)
@@ -192,7 +207,6 @@ try:
         else:
             conn.commit()
             print(f"Query OK, {cursor.rowcount if cursor.rowcount >= 0 else 0} rows affected\\n")
-            
     conn.close()
     print("Database session completed successfully.")
 except Exception as e:
@@ -204,6 +218,46 @@ except Exception as e:
       tempFiles.push(scriptPath);
       command = 'python3';
       args = [scriptPath];
+    } else if (lang === 'kotlin') {
+      const kotlincBin = getKotlincBinaryPath();
+      if (kotlincBin) {
+        const isScript = (filePath && filePath.endsWith('.kts')) || (code.includes('println') && !code.includes('fun main'));
+        if (isScript) {
+          const scriptPath = path.join(tmpDir, `${runId}.kts`);
+          await fs.writeFile(scriptPath, code, 'utf8');
+          tempFiles.push(scriptPath);
+          command = kotlincBin;
+          args = ['-script', scriptPath];
+        } else {
+          const srcPath = path.join(tmpDir, `${runId}.kt`);
+          const jarPath = path.join(tmpDir, `${runId}.jar`);
+          await fs.writeFile(srcPath, code, 'utf8');
+          tempFiles.push(srcPath, jarPath);
+          try {
+            execSync(`"${kotlincBin}" "${srcPath}" -include-runtime -d "${jarPath}"`, { timeout: 15000 });
+            command = 'java';
+            args = ['-jar', jarPath];
+          } catch (compErr: any) {
+            return {
+              stdout: '',
+              stderr: compErr.stdout?.toString() || compErr.stderr?.toString() || compErr.message || 'Kotlin Compilation failed',
+              exitCode: 1,
+              executionTimeMs: Date.now() - startTime,
+              language: 'kotlin',
+              status: 'error',
+            };
+          }
+        }
+      } else {
+        return {
+          stdout: '',
+          stderr: 'Kotlin compiler (kotlinc) is not installed on this system.',
+          exitCode: 1,
+          executionTimeMs: Date.now() - startTime,
+          language: 'kotlin',
+          status: 'error',
+        };
+      }
     } else if (lang === 'c' || lang === 'cpp') {
       const isCpp = lang === 'cpp';
       const compiler = isCpp ? 'g++' : 'gcc';
@@ -215,7 +269,6 @@ except Exception as e:
         await fs.writeFile(srcPath, code, 'utf8');
         tempFiles.push(srcPath, binPath);
 
-        // Compile first
         try {
           execSync(`${compiler} -O2 "${srcPath}" -o "${binPath}" 2>&1`, { timeout: 8000 });
           command = binPath;
@@ -231,14 +284,13 @@ except Exception as e:
           };
         }
       } else {
-        // Fallback quick evaluation / notice
         return {
-          stdout: `[C/C++ Static Syntax Check]\nSource code verified (size: ${code.length} bytes).\nNote: Native gcc/g++ compiler is not bundled in this container runtime.\nTo compile release C/C++ binaries, install gcc or use the APK/Docker export flow.`,
-          stderr: '',
-          exitCode: 0,
+          stdout: '',
+          stderr: `Compiler '${compiler}' is not installed in the environment. Please install ${compiler} to execute ${lang.toUpperCase()} code.`,
+          exitCode: 1,
           executionTimeMs: Date.now() - startTime,
           language: lang,
-          status: 'success',
+          status: 'error',
         };
       }
     } else if (lang === 'java') {
@@ -263,12 +315,12 @@ except Exception as e:
         }
       } else {
         return {
-          stdout: `[Java Code Validator]\nJava class structure verified (size: ${code.length} bytes).\nNote: JDK/javac runtime is ready for APK export & Gradle build console.`,
-          stderr: '',
-          exitCode: 0,
+          stdout: '',
+          stderr: 'Java compiler (javac) is not installed in the environment.',
+          exitCode: 1,
           executionTimeMs: Date.now() - startTime,
           language: 'java',
-          status: 'success',
+          status: 'error',
         };
       }
     } else if (lang === 'rust') {
@@ -283,12 +335,12 @@ except Exception as e:
         args = [];
       } else {
         return {
-          stdout: `[Rust Code Validator]\nRust source code parsed successfully (${code.length} chars).\nNote: Native rustc compiler is not installed in this container image.`,
-          stderr: '',
-          exitCode: 0,
+          stdout: '',
+          stderr: 'Rust compiler (rustc) is not installed in the environment.',
+          exitCode: 1,
           executionTimeMs: Date.now() - startTime,
           language: 'rust',
-          status: 'success',
+          status: 'error',
         };
       }
     } else if (lang === 'go') {
@@ -301,16 +353,15 @@ except Exception as e:
         args = ['run', goPath];
       } else {
         return {
-          stdout: `[Go Code Validator]\nGo package syntax parsed successfully (${code.length} chars).\nNote: Native go runtime is not installed in this container image.`,
-          stderr: '',
-          exitCode: 0,
+          stdout: '',
+          stderr: 'Go compiler/runtime (go) is not installed in the environment.',
+          exitCode: 1,
           executionTimeMs: Date.now() - startTime,
           language: 'go',
-          status: 'success',
+          status: 'error',
         };
       }
     } else {
-      // Default: inspect text / JSON / generic
       return {
         stdout: `[Generic File Inspector]\nLanguage: ${lang}\nLength: ${code.length} characters\nLines: ${code.split('\n').length}\nContent preview:\n${code.slice(0, 300)}`,
         stderr: '',
@@ -399,7 +450,6 @@ except Exception as e:
       status: 'error',
     };
   } finally {
-    // Cleanup temporary files
     for (const f of tempFiles) {
       fs.unlink(f).catch(() => {});
     }
@@ -416,8 +466,32 @@ export async function runLanguageCapabilityMatrix(): Promise<CapabilityProbeResu
   const javaCheck = isCommandAvailable('javac');
   const goCheck = isCommandAvailable('go');
   const rustCheck = isCommandAvailable('rustc');
+  const kotlinCheck = isCommandAvailable('kotlinc');
 
   const matrix: CapabilityProbeResult[] = [
+    {
+      id: 'kotlin',
+      name: 'Kotlin',
+      icon: '🟪',
+      tag: 'Kotlin / JVM',
+      extension: '.kt',
+      command: 'kotlinc',
+      isInstalled: kotlinCheck.available,
+      version: kotlinCheck.version || 'Kotlin 1.9+',
+      capabilities: {
+        write: true,
+        read: true,
+        edit: true,
+        execute: kotlinCheck.available,
+        install: true,
+        build: true,
+      },
+      testStatus: 'pending',
+      testOutput: '',
+      testDurationMs: 0,
+      sampleCode: `println("🟪 Kotlin Engine Active!")\nval numbers = listOf(1, 2, 3, 4, 5)\nprintln("Sum of numbers: \${numbers.sum()}")\nprintln("Status: Kotlin compilation & execution verified! ✅")\n`,
+      description: 'Modern Android Kotlin & JVM scripting engine.',
+    },
     {
       id: 'python',
       name: 'Python',
@@ -461,7 +535,7 @@ export async function runLanguageCapabilityMatrix(): Promise<CapabilityProbeResu
       testStatus: 'pending',
       testOutput: '',
       testDurationMs: 0,
-      sampleCode: `// Node.js Execution Engine\nconst crypto = require('crypto');\n\nconst hash = crypto.createHash('sha256').update('Universal-Execution-Hub').digest('hex');\nconsole.log("🟨 Node.js Engine Active: " + process.version);\nconsole.log("SHA256 Hash Digest: " + hash.substring(0, 16) + "...");\nconsole.log("Status: Async event loop and I/O verified! ✅");\n`,
+      sampleCode: `const crypto = require('crypto');\nconst hash = crypto.createHash('sha256').update('Universal-Execution-Hub').digest('hex');\nconsole.log("🟨 Node.js Engine Active: " + process.version);\nconsole.log("SHA256 Hash Digest: " + hash.substring(0, 16) + "...");\nconsole.log("Status: Async event loop and I/O verified! ✅");\n`,
       description: 'Universal frontend and backend JavaScript runtime with npm ecosystem.',
     },
     {
@@ -484,7 +558,7 @@ export async function runLanguageCapabilityMatrix(): Promise<CapabilityProbeResu
       testStatus: 'pending',
       testOutput: '',
       testDurationMs: 0,
-      sampleCode: `// TypeScript Direct Execution via TSX\ninterface ServerMetrics {\n  uptime: number;\n  memory: string;\n  status: 'ONLINE' | 'STANDBY';\n}\n\nconst getMetrics = (): ServerMetrics => ({\n  uptime: process.uptime(),\n  memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',\n  status: 'ONLINE',\n});\n\nconsole.log("🔷 TypeScript Native Runner Active!");\nconsole.log("Metrics:", JSON.stringify(getMetrics(), null, 2));\nconsole.log("Status: Type-safety and compilation verified! ✅");\n`,
+      sampleCode: `interface ServerMetrics {\n  uptime: number;\n  memory: string;\n  status: 'ONLINE' | 'STANDBY';\n}\n\nconst getMetrics = (): ServerMetrics => ({\n  uptime: process.uptime(),\n  memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',\n  status: 'ONLINE',\n});\n\nconsole.log("🔷 TypeScript Native Runner Active!");\nconsole.log("Metrics:", JSON.stringify(getMetrics(), null, 2));\nconsole.log("Status: Type-safety and compilation verified! ✅");\n`,
       description: 'Type-safe JavaScript superset executing via TSX/tsc runtime.',
     },
     {
@@ -610,7 +684,7 @@ export async function runLanguageCapabilityMatrix(): Promise<CapabilityProbeResu
       extension: '.java',
       command: 'javac',
       isInstalled: javaCheck.available,
-      version: javaCheck.version || 'Java 17+',
+      version: javaCheck.version || 'Java 21+',
       capabilities: {
         write: true,
         read: true,
@@ -622,7 +696,7 @@ export async function runLanguageCapabilityMatrix(): Promise<CapabilityProbeResu
       testStatus: 'pending',
       testOutput: '',
       testDurationMs: 0,
-      sampleCode: `public class Main {\n    public static void main(String[] args) {\n        System.out.println("☕ Java Virtual Machine Active!");\n        System.out.println("Runtime Version: " + System.getProperty("java.version", "17"));\n        System.out.println("Status: Java syntax and JVM classes verified! ✅");\n    }\n}\n`,
+      sampleCode: `public class Main {\n    public static void main(String[] args) {\n        System.out.println("☕ Java Virtual Machine Active!");\n        System.out.println("Runtime Version: " + System.getProperty("java.version", "21"));\n        System.out.println("Status: Java syntax and JVM classes verified! ✅");\n    }\n}\n`,
       description: 'Enterprise backend, Android core runtime, and object-oriented JVM.',
     },
     {
@@ -679,7 +753,7 @@ export async function runLanguageCapabilityMatrix(): Promise<CapabilityProbeResu
       const res = await executeCode({
         code: item.sampleCode,
         language: item.id,
-        timeoutMs: 6000,
+        timeoutMs: 8000,
       });
 
       return {

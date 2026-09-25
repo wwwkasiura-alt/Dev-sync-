@@ -16,11 +16,7 @@ import {
   Layers,
   Search,
   Zap,
-  GitBranch,
-  UploadCloud,
-  CheckCircle2,
-  Terminal,
-  Play
+  Terminal
 } from 'lucide-react';
 import { Project, ProjectFile } from '../types';
 import { ExecutionConsole } from './ExecutionConsole';
@@ -109,18 +105,18 @@ export const CodeWorkspace: React.FC<CodeWorkspaceProps> = ({
 
   const getFileIcon = (fileName: string) => {
     if (fileName.endsWith('.kt') || fileName.endsWith('.java')) {
-      return <FileCode className="w-4 h-4 text-emerald-400" />;
+      return <FileCode className="w-4 h-4 text-emerald-400 shrink-0" />;
     }
     if (fileName.endsWith('.xml')) {
-      return <Code className="w-4 h-4 text-amber-400" />;
+      return <Code className="w-4 h-4 text-amber-400 shrink-0" />;
     }
     if (fileName.endsWith('.gradle') || fileName.endsWith('.kts')) {
-      return <Layers className="w-4 h-4 text-indigo-400" />;
+      return <Layers className="w-4 h-4 text-indigo-400 shrink-0" />;
     }
     if (fileName.endsWith('.json')) {
-      return <FileJson className="w-4 h-4 text-sky-400" />;
+      return <FileJson className="w-4 h-4 text-sky-400 shrink-0" />;
     }
-    return <FileText className="w-4 h-4 text-slate-400" />;
+    return <FileText className="w-4 h-4 text-slate-400 shrink-0" />;
   };
 
   const lineCount = (activeFile ? (isEditing ? editedCode : activeFile.content) : '').split('\n').length;
@@ -234,35 +230,34 @@ export const CodeWorkspace: React.FC<CodeWorkspaceProps> = ({
       <main className="flex-1 flex flex-col min-w-0 bg-slate-950 overflow-hidden">
         {activeFile ? (
           <>
-            {/* Code Header Bar */}
-            <div className="min-h-[3rem] px-2 sm:px-4 py-1.5 border-b border-slate-800 bg-slate-900/50 flex flex-wrap items-center justify-between gap-2 shrink-0">
-              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 max-w-full truncate">
+            {/* Code Header Bar - Phone Optimized */}
+            <div className="min-h-[2.75rem] px-2 sm:px-4 py-1.5 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between gap-1.5 shrink-0">
+              <div className="flex items-center gap-1.5 min-w-0 max-w-[60%] sm:max-w-none">
                 <button
                   type="button"
                   onClick={() => setShowMobileFiles(true)}
-                  className="sm:hidden p-1 rounded bg-slate-800 text-slate-300 hover:text-indigo-400 flex items-center gap-1 text-[11px] shrink-0"
+                  className="sm:hidden p-1.5 rounded bg-slate-800/90 text-indigo-300 hover:bg-slate-700 flex items-center gap-1 text-[11px] font-medium shrink-0 touch-manipulation"
                   title="Open file list"
                 >
                   <FolderOpen className="w-3.5 h-3.5" />
-                  <span>Files</span>
+                  <span className="hidden xs:inline">Files</span>
                 </button>
                 {getFileIcon(activeFile.name)}
-                <span className="font-mono text-[11px] sm:text-xs text-slate-300 truncate">
-                  {activeFile.path}
+                <span className="font-mono text-[11px] sm:text-xs text-slate-200 truncate font-medium">
+                  {activeFile.name}
                 </span>
-                <span className="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 uppercase font-mono hidden xs:inline-block">
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 uppercase font-mono hidden md:inline-block">
                   {activeFile.language}
                 </span>
                 {isEditing && (
-                  <span className="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium shrink-0">
                     Unsaved
                   </span>
                 )}
               </div>
 
-              {/* Action Buttons & Auto-Commit Status */}
-              <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                {/* Auto-commit status pill */}
+              {/* Action Buttons - Compact Phone Touch Targets */}
+              <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                 {project.githubSync?.autoCommit && (
                   <button
                     type="button"
@@ -292,18 +287,18 @@ export const CodeWorkspace: React.FC<CodeWorkspaceProps> = ({
                     <button
                       id="save-code-btn"
                       onClick={handleSave}
-                      className="flex items-center gap-1 px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-medium transition-colors"
+                      className="flex items-center gap-1 px-2.5 py-1 sm:px-2 sm:py-1 rounded bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-[11px] font-medium transition-colors touch-manipulation"
                     >
-                      <Check className="w-3 h-3" />
+                      <Check className="w-3.5 h-3.5" />
                       <span>{project.githubSync?.autoCommit ? 'Save & Commit' : 'Save'}</span>
                     </button>
                     <button
                       id="discard-code-btn"
                       onClick={handleDiscard}
-                      className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium transition-colors"
+                      className="flex items-center gap-1 px-2.5 py-1 sm:px-2 sm:py-1 rounded bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-300 text-[11px] font-medium transition-colors touch-manipulation"
                     >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Discard</span>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span className="hidden xs:inline">Discard</span>
                     </button>
                   </>
                 ) : (
@@ -311,18 +306,18 @@ export const CodeWorkspace: React.FC<CodeWorkspaceProps> = ({
                     <button
                       id="edit-code-btn"
                       onClick={() => setIsEditing(true)}
-                      className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium transition-colors"
+                      className="flex items-center gap-1 px-2.5 py-1 sm:px-2 sm:py-1 rounded bg-indigo-600/90 hover:bg-indigo-600 text-white text-[11px] font-medium transition-colors touch-manipulation"
                     >
-                      <Edit3 className="w-3 h-3" />
+                      <Edit3 className="w-3.5 h-3.5" />
                       <span>Edit</span>
                     </button>
                     <button
                       id="copy-code-btn"
                       onClick={handleCopyCode}
-                      className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium transition-colors"
+                      className="flex items-center gap-1 px-2.5 py-1 sm:px-2 sm:py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium transition-colors touch-manipulation"
                     >
-                      {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copied ? 'Copied' : 'Copy'}</span>
+                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span className="hidden xs:inline">{copied ? 'Copied' : 'Copy'}</span>
                     </button>
                   </>
                 )}
@@ -331,23 +326,23 @@ export const CodeWorkspace: React.FC<CodeWorkspaceProps> = ({
 
             {/* Pending Patch Banner if available */}
             {isPendingOnThisFile && pendingPatch && (
-              <div className="bg-indigo-950/80 border-b border-indigo-500/40 px-4 py-2.5 flex items-center justify-between text-xs text-indigo-200">
+              <div className="bg-indigo-950/90 border-b border-indigo-500/40 px-3 py-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-indigo-200 shrink-0">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
-                  <span>
-                    <strong>{pendingPatch.source}</strong> proposed changes: {pendingPatch.summary}
+                  <span className="text-[11px] sm:text-xs">
+                    <strong>{pendingPatch.source}</strong>: {pendingPatch.summary}
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 self-end sm:self-auto">
                   <button
                     onClick={onApplyPendingPatch}
-                    className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-sm transition-colors"
+                    className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-[11px] transition-colors"
                   >
                     Apply Code Change
                   </button>
                   <button
                     onClick={onDiscardPendingPatch}
-                    className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
+                    className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 text-[11px] transition-colors"
                   >
                     Dismiss
                   </button>
@@ -355,30 +350,30 @@ export const CodeWorkspace: React.FC<CodeWorkspaceProps> = ({
               </div>
             )}
 
-            {/* Code Body */}
-            <div className="flex-1 overflow-hidden flex flex-col relative font-mono text-xs">
+            {/* Code Body - Phone Display Optimized */}
+            <div className="flex-1 overflow-hidden flex flex-col relative font-mono text-xs bg-slate-950">
               {isEditing ? (
                 <textarea
                   id="code-editor-textarea"
                   value={editedCode}
                   onChange={(e) => setEditedCode(e.target.value)}
-                  className="w-full h-full p-4 bg-slate-950 text-slate-100 resize-none font-mono text-xs leading-relaxed focus:outline-none focus:ring-0 border-none select-text"
+                  className="w-full h-full p-2.5 sm:p-4 bg-slate-950 text-slate-100 resize-none font-mono text-[11px] sm:text-xs leading-relaxed focus:outline-none focus:ring-0 border-none select-text touch-pan-y"
                   spellCheck={false}
                 />
               ) : (
-                <div className="flex-1 overflow-y-auto overflow-x-hidden flex select-text bg-slate-950">
-                  {/* Pinned Line numbers gutter (only scrolls vertically with parent, never horizontally) */}
-                  <div className="w-11 py-4 select-none bg-slate-900/40 text-slate-500 text-right pr-2.5 font-mono border-r border-slate-800/80 shrink-0">
+                <div className="flex-1 overflow-y-auto overflow-x-hidden flex select-text bg-slate-950 touch-pan-y">
+                  {/* Compact Line Numbers Gutter for Phone Screens */}
+                  <div className="w-8 sm:w-11 py-3 sm:py-4 select-none bg-slate-900/50 text-slate-500 text-right pr-1 sm:pr-2.5 font-mono border-r border-slate-800/80 shrink-0">
                     {Array.from({ length: lineCount }).map((_, i) => (
-                      <div key={i} className="leading-6 text-[11px]">
+                      <div key={i} className="leading-6 text-[10px] sm:text-[11px]">
                         {i + 1}
                       </div>
                     ))}
                   </div>
 
-                  {/* Horizontally scrollable code content wrapper */}
+                  {/* Horizontally Scrollable Code Text Container */}
                   <div className="flex-1 overflow-x-auto">
-                    <pre className="p-4 text-slate-200 font-mono text-[11px] leading-6 whitespace-pre min-w-max">
+                    <pre className="p-2.5 sm:p-4 text-slate-200 font-mono text-[11px] sm:text-xs leading-6 whitespace-pre min-w-max">
                       <code>{activeFile.content}</code>
                     </pre>
                   </div>
@@ -396,34 +391,34 @@ export const CodeWorkspace: React.FC<CodeWorkspaceProps> = ({
               onOpenMatrixModal={onOpenMatrixModal}
             />
 
-            {/* Status Footer */}
-            <div className="h-7 px-4 bg-slate-900 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 select-none">
-              <div className="flex items-center gap-4">
+            {/* Status Footer - Phone Responsive */}
+            <div className="min-h-[1.75rem] px-2.5 sm:px-4 py-1 bg-slate-900 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-[10px] sm:text-[11px] text-slate-400 select-none gap-2 shrink-0">
+              <div className="flex items-center gap-3">
                 <span>Lines: {lineCount}</span>
-                <span>Length: {activeFile.content.length} chars</span>
+                <span className="hidden xs:inline">Length: {activeFile.content.length} chars</span>
                 <button
                   type="button"
                   onClick={() => setIsConsoleOpen(!isConsoleOpen)}
-                  className="hover:text-indigo-300 flex items-center gap-1 text-[11px] font-mono transition-colors"
+                  className="hover:text-indigo-300 flex items-center gap-1 font-mono transition-colors text-indigo-400"
                 >
                   <Terminal className="w-3 h-3 text-indigo-400" />
                   <span>{isConsoleOpen ? 'Hide Terminal' : 'Show Terminal'}</span>
                 </button>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 {onOpenMatrixModal && (
                   <button
                     type="button"
                     onClick={onOpenMatrixModal}
-                    className="hover:text-amber-300 flex items-center gap-1 text-[11px] transition-colors"
+                    className="hover:text-amber-300 flex items-center gap-1 transition-colors text-amber-400"
                   >
                     <Zap className="w-3 h-3 text-amber-400" />
-                    <span>Language Matrix</span>
+                    <span>Matrix</span>
                   </button>
                 )}
-                <span className="flex items-center gap-1.5">
+                <span className="hidden xs:flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                  Universal Runtime Active
+                  Universal Runtime
                 </span>
               </div>
             </div>

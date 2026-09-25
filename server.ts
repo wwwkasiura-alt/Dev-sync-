@@ -102,17 +102,23 @@ app.post('/api/agents/order', async (req, res) => {
 
   const ai = getGeminiClient();
 
-  if (ai) {
-    try {
-      // Intelligent file context: include full content up to 10,000 chars per file
-      const filesOverview = projectContext?.files?.map((f: any) => {
-        const truncatedContent = f.content.length > 10000 
-          ? f.content.slice(0, 10000) + '\n// ... [remaining content trimmed for context]'
-          : f.content;
-        return `File: ${f.path}\nContent:\n\`\`\`${f.language || ''}\n${truncatedContent}\n\`\`\``;
-      }).join('\n\n') || 'No files';
+  if (!ai) {
+    res.status(400).json({
+      error: 'GEMINI_API_KEY is not configured on the server. Please set GEMINI_API_KEY environment variable to use the AI squad.',
+    });
+    return;
+  }
 
-      const prompt = `You are the lead orchestrator of an elite 4-member AI Engineering Squad in a Universal Multi-Language Coding & Execution Workspace.
+  try {
+    // Intelligent file context: include full content up to 10,000 chars per file
+    const filesOverview = projectContext?.files?.map((f: any) => {
+      const truncatedContent = f.content.length > 10000
+        ? f.content.slice(0, 10000) + '\n// ... [remaining content trimmed for context]'
+        : f.content;
+      return `File: ${f.path}\nContent:\n\`\`\`${f.language || ''}\n${truncatedContent}\n\`\`\``;
+    }).join('\n\n') || 'No files';
+
+    const prompt = `You are the lead orchestrator of an elite 4-member AI Engineering Squad in a Universal Multi-Language Coding & Execution Workspace.
 Project Name: ${projectContext?.name || 'Project'}
 Project Type: ${projectContext?.type || 'generic-code'}
 
@@ -125,20 +131,14 @@ USER'S DIRECT ORDER:
 TARGET AUDIENCE: ${targetAgent === 'all' ? 'The entire AI team will address this order collaboratively.' : `Specific order directed to ${targetAgent}.`}
 
 TEAM MEMBERS & CAPABILITIES:
-1. "architect" (Aria - Lead Systems Architect): Analyzes requirements across all languages (Python, TypeScript, JavaScript, SQL, Bash, C/C++, Java, Rust, Go, Kotlin, HTML), plans clean architectures, state models, and modular patterns.
-2. "coder" (Rex - Universal Fullstack & Polyglot Coder): Writes and edits complete code in Python, TypeScript, JavaScript, SQL, C/C++, Rust, Go, Java, Kotlin, or Shell. Always writes complete, runnable code.
+1. "architect" (Aria - Lead Systems Architect): Analyzes requirements across all languages (Kotlin, Python, TypeScript, JavaScript, SQL, Bash, C/C++, Java, Rust, Go, HTML), plans clean architectures, state models, and modular patterns.
+2. "coder" (Rex - Universal Fullstack & Polyglot Coder): Writes and edits complete code in Kotlin, Python, TypeScript, JavaScript, SQL, C/C++, Rust, Go, Java, or Shell. Always writes complete, runnable code.
 3. "reviewer" (Cipher - QA & Security Reviewer): Audits code for memory leaks, type safety, SQL injection, null safety, logic bugs, performance, and test verification.
 4. "devops" (Nova - DevOps, Compiler & Execution Lead): Handles package dependencies (pip, npm, cargo, maven, gradle), compiler settings, execution commands, and environment diagnostics.
 
 TASK INSTRUCTIONS:
 - Simulate the AI squad working together in real time. The team speaks naturally to each other and to the user (can understand Hindi/Hinglish/English naturally).
-- MULTI-LANGUAGE FREEDOM: The squad can write and modify code in ANY language the user requests:
-  • Python (scripts, APIs, data processing, algorithms)
-  • JavaScript / TypeScript (Node.js backend, React frontend)
-  • SQL (database queries, schemas, table creations)
-  • Shell / Bash (automation scripts, pipelines)
-  • C / C++ / Java / Rust / Go / Kotlin (systems, applications, Android)
-  • HTML / CSS (interactive web components)
+- MULTI-LANGUAGE FREEDOM: The squad can write and modify code in ANY language requested, especially Kotlin & Jetpack Compose for Android.
 - ROOT CAUSE & TRIAGE RULE: Explain reasons clearly and only propose changes that solve the user's requirements.
 - MULTI-FILE CODE PATCHES: If the user's order requires multiple files, provide them in "suggestedPatches"!
 - Always write COMPLETE, working code in "newContent" without placeholders or truncation comments.
@@ -164,119 +164,45 @@ Respond with pure JSON matching this TypeScript structure:
 
 Return between 2 to 4 back-and-forth turns between the agents where they discuss, write the code, and review it. Return pure JSON only.`;
 
-      const geminiPromise = ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.7,
-        },
-      });
-
-      // 45 seconds timeout for comprehensive multi-file code generation
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Gemini API timeout')), 45000)
-      );
-
-      const response: any = await Promise.race([geminiPromise, timeoutPromise]);
-      const responseText = response.text || '{}';
-      const parsed = JSON.parse(responseText);
-      if (parsed.dialogue && Array.isArray(parsed.dialogue)) {
-        // Normalize single-patch vs multi-patch for seamless frontend compatibility
-        const normalizedDialogue = parsed.dialogue.map((turn: any) => {
-          let patches = turn.suggestedPatches;
-          if (!patches && turn.suggestedPatch) {
-            patches = [turn.suggestedPatch];
-          }
-          return {
-            ...turn,
-            suggestedPatches: patches && patches.length > 0 ? patches : undefined,
-            suggestedPatch: patches && patches.length > 0 ? patches[0] : undefined,
-          };
-        });
-        res.json({ dialogue: normalizedDialogue });
-        return;
-      }
-    } catch (err) {
-      console.warn('Gemini API call failed, switching to smart fallback:', err);
-    }
-  }
-
-  // Realistic fallback squad generator if API key is not yet set
-  const fallbackTurns = generateFallbackAgentDiscussion(order, targetAgent, projectContext);
-  res.json({ dialogue: fallbackTurns });
-});
-
-// Helper for fallback simulation
-function generateFallbackAgentDiscussion(order: string, targetAgent: string, projectContext: any) {
-  const isAndroid = projectContext?.type === 'android-apk';
-  const turns = [];
-
-  const matchedCodeFile = projectContext?.files?.find((f: any) => 
-    isAndroid ? f.path.endsWith('.kt') || f.path.endsWith('.java') : f.path.endsWith('.ts') || f.path.endsWith('.tsx') || f.path.endsWith('.js')
-  );
-
-  const firstFile = matchedCodeFile || projectContext?.files?.[0] || {
-    path: isAndroid ? 'app/src/main/java/com/example/app/MainActivity.kt' : 'src/index.ts',
-    content: '// Source file',
-    language: isAndroid ? 'kotlin' : 'typescript'
-  };
-
-  if (targetAgent === 'all' || targetAgent === 'architect') {
-    turns.push({
-      agent: 'architect',
-      name: 'Aria',
-      text: `Order received: "${order}". I have broken down the requirements. We need to update our modular structure to accommodate this cleanly while maintaining responsive performance and separation of concerns. Rex, please implement the core logic for this in \`${firstFile.path}\`.`,
-    });
-  }
-
-  if (targetAgent === 'all' || targetAgent === 'coder') {
-    const isNewFeature = order.toLowerCase().includes('add') || order.toLowerCase().includes('naya') || order.toLowerCase().includes('feature');
-    const additionComment = isAndroid
-      ? `\n    // Added feature by Rex for order: ${order}\n    // Live reactive state & modern UI element\n`
-      : `\n// Feature implemented for order: ${order}\n`;
-
-    const updatedCode = firstFile.content + additionComment;
-
-    turns.push({
-      agent: 'coder',
-      name: 'Rex',
-      text: `On it! I have implemented the requested changes in \`${firstFile.path}\`. The logic is hooked up with clean state handling. Reviewing with Cipher now.`,
-      suggestedPatch: {
-        filePath: firstFile.path,
-        action: 'edit',
-        newContent: updatedCode,
-        summary: `Implemented requested feature: ${order.slice(0, 60)}`
+    const geminiPromise = ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0.7,
       },
-      suggestedPatches: [
-        {
-          filePath: firstFile.path,
-          action: 'edit',
-          newContent: updatedCode,
-          summary: `Implemented requested feature: ${order.slice(0, 60)}`
+    });
+
+    // 45 seconds timeout for comprehensive multi-file code generation
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Gemini API timeout')), 45000)
+    );
+
+    const response: any = await Promise.race([geminiPromise, timeoutPromise]);
+    const responseText = response.text || '{}';
+    const parsed = JSON.parse(responseText);
+    if (parsed.dialogue && Array.isArray(parsed.dialogue)) {
+      const normalizedDialogue = parsed.dialogue.map((turn: any) => {
+        let patches = turn.suggestedPatches;
+        if (!patches && turn.suggestedPatch) {
+          patches = [turn.suggestedPatch];
         }
-      ]
-    });
-  }
+        return {
+          ...turn,
+          suggestedPatches: patches && patches.length > 0 ? patches : undefined,
+          suggestedPatch: patches && patches.length > 0 ? patches[0] : undefined,
+        };
+      });
+      res.json({ dialogue: normalizedDialogue });
+      return;
+    }
 
-  if (targetAgent === 'all' || targetAgent === 'reviewer') {
-    turns.push({
-      agent: 'reviewer',
-      name: 'Cipher',
-      text: `I verified Rex's code patch for \`${firstFile.path}\`. Syntax checks out, state management is safe, and no memory leaks detected. Ready to apply or merge into main branch!`,
-    });
+    res.status(500).json({ error: 'Invalid response format received from Gemini API' });
+  } catch (err: any) {
+    console.error('Gemini API call failed:', err);
+    res.status(500).json({ error: err.message || 'Gemini API call failed' });
   }
-
-  if ((targetAgent === 'all' || targetAgent === 'devops') && isAndroid) {
-    turns.push({
-      agent: 'devops',
-      name: 'Nova',
-      text: `Build check complete! Android Gradle dependencies and Manifest permissions are verified. Once merged, you can build with \`./gradlew assembleDebug\` or download the ready-to-compile APK bundle ZIP.`,
-    });
-  }
-
-  return turns;
-}
+});
 
 // Guest AI / Mobile URL Bridge: Fetch full raw project context for external mobile AIs
 app.get('/api/public/project-context/:projectId', (req, res) => {
