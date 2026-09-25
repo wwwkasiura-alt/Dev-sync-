@@ -21,16 +21,14 @@ const STORAGE_KEY_SUBMISSIONS = 'codesquad_guest_submissions_v1';
 const STORAGE_KEY_GITHUB_USER = 'codesquad_github_user_v1';
 
 export default function App() {
-  // Load saved projects or fallback to initial (filter out previous fake preview repos)
+  // Load saved projects or fallback to initial
   const [projects, setProjects] = useState<Project[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_PROJECTS);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.filter(
-            (p: Project) => p && p.id !== 'quicknotes-apk' && p.id !== 'web-devtools-suite'
-          );
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
         }
       }
     } catch (e) {
@@ -42,7 +40,7 @@ export default function App() {
   const [activeProjectId, setActiveProjectId] = useState<string>(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const paramProject = urlParams.get('project');
-    if (paramProject && paramProject !== 'quicknotes-apk' && paramProject !== 'web-devtools-suite') {
+    if (paramProject) {
       return paramProject;
     }
     return projects[0]?.id || '';
@@ -194,10 +192,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_CHATS);
       if (saved) {
-        const parsed = JSON.parse(saved);
-        delete parsed['quicknotes-apk'];
-        delete parsed['web-devtools-suite'];
-        return parsed;
+        return JSON.parse(saved);
       }
     } catch (e) {
       console.warn('Failed to load chats from localStorage', e);
@@ -210,10 +205,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_SUBMISSIONS);
       if (saved) {
-        const parsed = JSON.parse(saved);
-        delete parsed['quicknotes-apk'];
-        delete parsed['web-devtools-suite'];
-        return parsed;
+        return JSON.parse(saved);
       }
     } catch (e) {
       console.warn('Failed to load submissions from localStorage', e);
