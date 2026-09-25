@@ -1,0 +1,6 @@
+{
+  "name": "AI Code & Agent Hub",
+  "description": "GitHub-like code and Android APK repository manager with direct GitHub push, mobile AI web bridge URLs, and interactive multi-agent team room.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
